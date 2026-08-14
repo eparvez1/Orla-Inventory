@@ -1,0 +1,6 @@
+{
+  "appId": "com.salesgodmode.app",
+  "appName": "Sales God Mode",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}
