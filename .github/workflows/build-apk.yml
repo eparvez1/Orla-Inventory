@@ -11,30 +11,56 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Get project files
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      # 3. Install project dependencies
       - name: Install dependencies
         run: npm install --no-package-lock
 
-      # 4. Create web folder
       - name: Prepare web folder
         run: |
           rm -rf www
           mkdir -p www
           cp index.html www/index.html
 
-      # 5. Install Capacitor Android
+          cat > www/supabase-config.js <<'EOF'
+          window.SUPABASE_URL = '${{ secrets.SUPABASE_URL }}';
+          window.SUPABASE_ANON_KEY = '${{ secrets.SUPABASE_ANON_KEY }}';
+          EOF
+
       - name: Install Capacitor Android
         run: npm install @capacitor/android@7.4.0 --no-package-lock
+
+      - name: Create Android project
+        run: npx cap add android
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Sync Android project
+        run: npx cap sync android
+
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sales-God-Mode-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error        run: npm install @capacitor/android@7.4.0 --no-package-lock
 
       # 6. Create Android project
       - name: Create Android project
