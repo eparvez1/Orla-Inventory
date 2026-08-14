@@ -29,6 +29,15 @@ table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;ove
 <nav id="nav"></nav>
 <main id="app"></main>
 <script>
+<script>
+const SUPABASE_URL = window.SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "";
+
+const supabaseClient = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+);
+<script>
 const KEY="sales_god_mode_v1";
 const seed={brands:[],categories:[],products:[],stock:[],purchases:[],purchaseItems:[],saleAllocations:[],sales:[],saleItems:[],expenses:[],returns:[],audit:[],settings:{currency:"৳"}};
 let db=JSON.parse(localStorage.getItem(KEY)||"null")||seed;
