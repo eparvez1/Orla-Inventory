@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#111827">
+<title>Sales God Mode</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:#f3f4f6;color:#111827}
+button,input,select,textarea{font:inherit}button{cursor:pointer}
+header{background:#111827;color:#fff;padding:15px;position:sticky;top:0;z-index:20}
+.header-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand{font-size:20px;font-weight:900}.sub{font-size:12px;color:#cbd5e1;margin-top:3px}
+.user-box{text-align:right;font-size:11px;color:#cbd5e1}.logout{margin-top:5px;background:#374151;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-weight:700}
+nav{display:flex;gap:6px;overflow:auto;padding:10px;background:#fff;border-bottom:1px solid #e5e7eb;position:sticky;top:70px;z-index:15}
+nav button{border:0;background:#eef2ff;padding:9px 12px;border-radius:10px;white-space:nowrap;font-weight:700;color:#374151}
+nav button.active{background:#111827;color:#fff}
+main{max-width:1250px;margin:auto;padding:15px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:14px;box-shadow:0 2px 8px #00000008}
+.metric{font-size:24px;font-weight:900;margin-top:6px}.muted{color:#6b7280;font-size:12px}.positive{color:#047857}.negative{color:#b91c1c}
+h2{margin:8px 0 14px;font-size:20px}.section{margin-top:18px}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.full{grid-column:1/-1}
+label{font-size:12px;font-weight:700;color:#4b5563}
+input,select,textarea{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:9px;margin-top:4px;background:#fff;outline:none}
+input:focus,select:focus,textarea:focus{border-color:#111827}textarea{min-height:90px;resize:vertical}
+.primary,.secondary,.danger{border:0;padding:10px 14px;border-radius:9px;font-weight:800}
+.primary{background:#111827;color:#fff}.secondary{background:#eef2ff;color:#111827}.danger{background:#fee2e2;color:#991b1b;padding:7px 9px}
+table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:9px;border-bottom:1px solid #e5e7eb;text-align:left;font-size:13px}th{background:#f9fafb}
+.tablewrap{overflow:auto}.empty{padding:30px;text-align:center;color:#6b7280}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.toolbar input{margin:0;flex:1;min-width:200px}
+.alert,.success,.error{padding:10px;border-radius:10px;margin-bottom:8px}.alert{background:#fff7ed;color:#9a3412}.success{background:#ecfdf5;color:#065f46}.error{background:#fee2e2;color:#991b1b}
+.pill{display:inline-block;padding:3px 7px;border-radius:99px;background:#eef2ff;font-size:11px;font-weight:700}.small{font-size:11px}
+.login-screen{min-height:100vh;display:grid;place-items:center;background:#111827;padding:20px}.login-card{width:min(420px,100%);background:#fff;border-radius:20px;padding:25px;box-shadow:0 20px 60px #0008}
+.login-logo{font-size:25px;font-weight:900;margin-bottom:4px}.login-sub{color:#6b7280;font-size:13px;margin-bottom:20px}.loading{min-height:100vh;display:grid;place-items:center;font-weight:800;font-size:18px}
+@media(max-width:600px){.header-row{align-items:flex-start}.brand{font-size:17px}nav{top:66px}main{padding:10px}.metric{font-size:21px}th,td{font-size:12px;padding:8px}}
+</style>
+</head>
+<body>
+<div id="root"><div class="loading">Loading Sales God Mode...</div></div>
+
+<script>
+"use strict";
+
+/* =========================
+   SUPABASE
+========================= */
+const SUPABASE_URL="https://pmttysenkksuemcpbjnr.supabase.co";
+const SUPABASE_ANON_KEY="sb_publishable_xByz-G3iNtvVrgs2j_JmHQ_nut4VBFo";
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+
+/* =========================
+   STATE / HELPERS
+========================= */
+let currentUser=null,currentProfile=null,currentView="dashboard";
+const currency="৳";
+const $=id=>document.getElementById(id);
+const money=v=>Number(v||0).toLocaleString("en-BD",{minimumFractionDigits:2,maximumFractionDigits:2})+" "+currency;
+const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+const today=()=>new Date().toISOString().slice(0,10);
+const dateTime=v=>v?new Date(v).toLocaleString("en-BD"):"—";
+const isOwner=()=>currentProfile?.role==="owner";
+const isManager=()=>["owner","manager"].includes(currentProfile?.role);
+
+function showError(err){
+  console.error(err);
+  const msg=err?.message||String(err)||"Something went wrong.";
+  const app=$("app");
+  if(app) app.innerHTML=`<div class="error"><b>Error:</b> ${esc(msg)}</div>`;
+}
+
+/* =========================
+   AUTH
+========================= */
+async function init(){
+  try{
+    const {data,error}=await sb.auth.getSession();
+    if(error) throw error;
+    if(!data.session){renderLogin();return;}
+    currentUser=data.session.user;
+    await loadProfile();
+    if(!currentProfile){
+      renderLogin("Profile not found for this account.");
+      return;
+    }
+    if(currentProfile.is_active===false){
+      await sb.auth.signOut();
+      renderLogin("Your account is inactive.");
+      return;
+    }
+    renderApp();
+  }catch(e){renderLogin("Unable to start application: "+(e.message||e));}
+}
+
+async function loadProfile(){
+  const {data,error}=await sb.from("profiles").select("*").eq("id",currentUser.id).maybeSingle();
+  if(error) throw error;
+  currentProfile=data;
+}
+
+function renderLogin(message=""){
+  $("root").innerHTML=`<div class="login-screen"><div class="login-card">
+    <div class="login-logo">SALES GOD MODE</div>
+    <div class="login-sub">Retail • Inventory • Sales • Profit</div>
+    ${message?`<div class="error">${esc(message)}</div>`:""}
+    <form id="loginForm">
+      <div class="full"><label>Email</label><input id="loginEmail" type="email" required autocomplete="email" placeholder="Enter your email"></div>
+      <div class="full"><label>Password</label><input id="loginPassword" type="password" required autocomplete="current-password" placeholder="Enter your password"></div>
+      <div class="full"><button class="primary" style="width:100%" type="submit">Login</button></div>
+    </form>
+  </div></div>`;
+  $("loginForm").addEventListener("submit",login);
+}
+
+async function login(e){
+  e.preventDefault();
+  const email=$("loginEmail").value.trim(),password=$("loginPassword").value;
+  const btn=e.submitter; if(btn){btn.disabled=true;btn.textContent="Logging in...";}
+  const {error}=await sb.auth.signInWithPassword({email,password});
+  if(error){if(btn){btn.disabled=false;btn.textContent="Login";} alert(error.message);return;}
+  await init();
+}
+
+async function logout(){
+  await sb.auth.signOut();
+  currentUser=null;currentProfile=null;renderLogin();
+}
+
+/* =========================
+   APP SHELL
+========================= */
+const views=[
+ ["dashboard","Dashboard"],["sale","Retail Sale"],["products","Products"],
+ ["brands","Brands"],["categories","Categories"],["stock","Stock"],
+ ["sales","Sales"],["expenses","Expenses"],["reports","Reports"],["audit","Audit Log"]
+];
+
+function renderApp(){
+  $("root").innerHTML=`<header><div class="header-row">
+    <div><div class="brand">SALES GOD MODE</div><div class="sub">Cloud Retail • Inventory • Sales • Profit</div></div>
+    <div class="user-box"><div>${esc(currentProfile.full_name||currentUser.email)}</div><div>${esc(currentProfile.role||"user")}</div><button class="logout" id="logoutBtn">Logout</button></div>
+  </div></header><nav id="nav"></nav><main id="app"></main>`;
+  $("logoutBtn").addEventListener("click",logout);
+  renderNav();show("dashboard");
+}
+function renderNav(){
+  $("nav").innerHTML=views.map(v=>`<button data-view="${v[0]}">${v[1]}</button>`).join("");
+  document.querySelectorAll("#nav button").forEach(b=>b.addEventListener("click",()=>show(b.dataset.view)));
+}
+async function show(view){
+  currentView=view;
+  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
+  $("app").innerHTML=`<div class="card">Loading...</div>`;
+  try{
+    if(view==="dashboard")await dashboard();
+    else if(view==="sale")await sale();
+    else if(view==="products")await products();
+    else if(view==="brands")await brands();
+    else if(view==="categories")await categories();
+    else if(view==="stock")await stock();
+    else if(view==="sales")await sales();
+    else if(view==="expenses")await expenses();
+    else if(view==="reports")await reports();
+    else if(view==="audit")await audit();
+  }catch(e){showError(e);}
+}
+
+/* =========================
+   DASHBOARD
+========================= */
+async function dashboard(){
+  const [sr,pr,er,br]=await Promise.all([
+    sb.from("sales").select("*").order("created_at",{ascending:false}),
+    sb.from("products").select("*").eq("is_active",true),
+    sb.from("expenses").select("*"),
+    sb.from("brand_sales_summary").select("*").order("gross_profit",{ascending:false})
+  ]);
+  if(sr.error)throw sr.error;if(pr.error)throw pr.error;if(er.error)throw er.error;if(br.error)throw br.error;
+  const sales=sr.data||[],products=pr.data||[],expenses=er.data||[],brands=br.data||[];
+  const ts=sales.filter(s=>String(s.created_at).slice(0,10)===today());
+  const totalSales=sales.reduce((a,s)=>a+Number(s.total_amount||0),0);
+  const todayTotal=ts.reduce((a,s)=>a+Number(s.total_amount||0),0);
+  const grossProfit=sales.reduce((a,s)=>a+Number(s.gross_profit||0),0);
+  const todayProfit=ts.reduce((a,s)=>a+Number(s.gross_profit||0),0);
+  const totalExpenses=expenses.reduce((a,e)=>a+Number(e.amount||0),0);
+  const stockUnits=products.reduce((a,p)=>a+Number(p.current_stock||0),0);
+  const stockValue=products.reduce((a,p)=>a+Number(p.current_stock||0)*Number(p.purchase_price||0),0);
+  const low=products.filter(p=>Number(p.current_stock||0)<=Number(p.minimum_stock||0));
+  $("app").innerHTML=`<h2>Dashboard</h2><div class="grid">
+    <div class="card"><div class="muted">Today's Sales</div><div class="metric">${money(todayTotal)}</div></div>
+    <div class="card"><div class="muted">Today's Gross Profit</div><div class="metric positive">${money(todayProfit)}</div></div>
+    <div class="card"><div class="muted">Total Sales</div><div class="metric">${money(totalSales)}</div></div>
+    <div class="card"><div class="muted">Gross Profit</div><div class="metric positive">${money(grossProfit)}</div></div>
+    <div class="card"><div class="muted">Expenses</div><div class="metric negative">${money(totalExpenses)}</div></div>
+    <div class="card"><div class="muted">Net Profit</div><div class="metric positive">${money(grossProfit-totalExpenses)}</div></div>
+    <div class="card"><div class="muted">Products</div><div class="metric">${products.length}</div></div>
+    <div class="card"><div class="muted">Units In Stock</div><div class="metric">${stockUnits}</div></div>
+    <div class="card"><div class="muted">Stock Cost Value</div><div class="metric">${money(stockValue)}</div></div>
+  </div>
+  <div class="section"><h2>Low Stock</h2>${low.length?low.map(p=>`<div class="alert"><b>${esc(p.name)}</b> • SKU: ${esc(p.sku)} • Stock: ${p.current_stock}</div>`).join(""):`<div class="success">No low-stock products.</div>`}</div>
+  <div class="section"><h2>Brand Performance</h2><div class="tablewrap"><table><tr><th>Brand</th><th>Units</th><th>Sales</th><th>Cost</th><th>Profit</th></tr>${brands.map(b=>`<tr><td>${esc(b.brand_name)}</td><td>${b.units_sold}</td><td>${money(b.total_sales)}</td><td>${money(b.total_cost)}</td><td class="positive">${money(b.gross_profit)}</td></tr>`).join("")||`<tr><td colspan="5" class="empty">No sales data yet.</td></tr>`}</table></div></div>`;
+}
+
+/* =========================
+   BRANDS
+========================= */
+async function brands(){
+  const {data,error}=await sb.from("brands").select("*").order("name");if(error)throw error;
+  $("app").innerHTML=`<h2>Brands</h2>${isOwner()?`<div class="card"><form id="brandForm">
+    <div><label>Brand Name</label><input id="brandName" required placeholder="US Polo"></div>
+    <div><label>Description</label><input id="brandDescription" placeholder="Premium clothing brand"></div>
+    <div style="align-self:end"><button class="primary" type="submit">Add Brand</button></div>
+  </form></div>`:""}<div class="section tablewrap"><table><tr><th>Brand</th><th>Description</th><th>Status</th>${isOwner()?"<th>Action</th>":""}</tr>
+  ${(data||[]).map(b=>`<tr><td><b>${esc(b.name)}</b></td><td>${esc(b.description||"")}</td><td><span class="pill">${b.is_active?"Active":"Inactive"}</span></td>${isOwner()?`<td><button class="danger" data-delete-brand="${b.id}">Delete</button></td>`:""}</tr>`).join("")||`<tr><td colspan="4" class="empty">No brands yet.</td></tr>`}</table></div>`;
+  if(isOwner()){
+    $("brandForm").addEventListener("submit",addBrand);
+    document.querySelectorAll("[data-delete-brand]").forEach(b=>b.addEventListener("click",()=>deleteBrand(b.dataset.deleteBrand)));
+  }
+}
+async function addBrand(e){
+  e.preventDefault();const payload={name:$("brandName").value.trim(),description:$("brandDescription").value.trim(),is_active:true};
+  const {data,error}=await sb.from("brands").insert(payload).select().single();if(error){alert(error.message);return;}
+  await writeAudit("CREATE","brands",data.id,null,payload);await show("brands");
+}
+async function deleteBrand(id){
+  if(!confirm("Delete this brand?"))return;
+  const {error}=await sb.from("brands").delete().eq("id",id);if(error){alert(error.message);return;}await show("brands");
+}
+
+/* =========================
+   CATEGORIES
+========================= */
+async function categories(){
+  const {data,error}=await sb.from("categories").select("*").order("name");if(error)throw error;
+  $("app").innerHTML=`<h2>Categories</h2>${isOwner()?`<div class="card"><form id="categoryForm">
+    <div><label>Category Name</label><input id="categoryName" required placeholder="Polo Shirt"></div>
+    <div><label>Description</label><input id="categoryDescription" placeholder="Men's polo"></div>
+    <div style="align-self:end"><button class="primary" type="submit">Add Category</button></div>
+  </form></div>`:""}<div class="section tablewrap"><table><tr><th>Category</th><th>Description</th><th>Status</th>${isOwner()?"<th>Action</th>":""}</tr>
+  ${(data||[]).map(c=>`<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.description||"")}</td><td><span class="pill">${c.is_active?"Active":"Inactive"}</span></td>${isOwner()?`<td><button class="danger" data-delete-category="${c.id}">Delete</button></td>`:""}</tr>`).join("")||`<tr><td colspan="4" class="empty">No categories yet.</td></tr>`}</table></div>`;
+  if(isOwner()){
+    $("categoryForm").addEventListener("submit",addCategory);
+    document.querySelectorAll("[data-delete-category]").forEach(b=>b.addEventListener("click",()=>deleteCategory(b.dataset.deleteCategory)));
+  }
+}
+async function addCategory(e){
+  e.preventDefault();const payload={name:$("categoryName").value.trim(),description:$("categoryDescription").value.trim(),is_active:true};
+  const {data,error}=await sb.from("categories").insert(payload).select().single();if(error){alert(error.message);return;}
+  await writeAudit("CREATE","categories",data.id,null,payload);await show("categories");
+}
+async function deleteCategory(id){
+  if(!confirm("Delete this category?"))return;
+  const {error}=await sb.from("categories").delete().eq("id",id);if(error){alert(error.message);return;}await show("categories");
+}
+
+/* =========================
+   PRODUCTS
+========================= */
+async function products(){
+  const [pr,br,cr]=await Promise.all([
+    sb.from("products").select("*").order("name"),
+    sb.from("brands").select("*").eq("is_active",true).order("name"),
+    sb.from("categories").select("*").eq("is_active",true).order("name")
+  ]);
+  if(pr.error)throw pr.error;if(br.error)throw br.error;if(cr.error)throw cr.error;
+  const ps=pr.data||[],bs=br.data||[],cs=cr.data||[];
+  $("app").innerHTML=`<h2>Products</h2>${isOwner()?`<div class="card"><form id="productForm">
+    <div><label>Product Name</label><input id="productName" required placeholder="Premium Polo Shirt"></div>
+    <div><label>Brand</label><select id="productBrand" required><option value="">Select Brand</option>${bs.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join("")}</select></div>
+    <div><label>Category</label><select id="productCategory" required><option value="">Select Category</option>${cs.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></div>
+    <div><label>SKU</label><input id="productSku" required placeholder="POL-001"></div>
+    <div><label>Purchase Price</label><input id="purchasePrice" type="number" min="0" step="0.01" required></div>
+    <div><label>Retail Price</label><input id="retailPrice" type="number" min="0" step="0.01" required></div>
+    <div><label>Wholesale Price</label><input id="wholesalePrice" type="number" min="0" step="0.01" value="0"></div>
+    <div><label>Minimum Stock</label><input id="minimumStock" type="number" min="0" value="3"></div>
+    <div class="full"><label>Description</label><textarea id="productDescription"></textarea></div>
+    <div><button class="primary" type="submit">Add Product</button></div>
+  </form></div>`:""}
+  <div class="section"><div class="toolbar"><input id="productSearch" placeholder="Search product / SKU"></div><div class="tablewrap"><table id="productTable"><tr><th>Product</th><th>SKU</th><th>Purchase</th><th>Retail</th><th>Stock</th><th>Min</th>${isOwner()?"<th>Action</th>":""}</tr>${ps.map(productRow).join("")||`<tr><td colspan="7" class="empty">No products yet.</td></tr>`}</table></div></div>`;
+  window.__products=ps;
+  $("productSearch").addEventListener("input",filterProducts);
+  if(isOwner()){$("productForm").addEventListener("submit",addProduct);document.querySelectorAll("[data-delete-product]").forEach(b=>b.addEventListener("click",()=>deleteProduct(b.dataset.deleteProduct)));}
+}
+function productRow(p){
+  const low=Number(p.current_stock||0)<=Number(p.minimum_stock||0);
+  return `<tr><td><b>${esc(p.name)}</b><div class="small muted">${esc(p.description||"")}</div></td><td>${esc(p.sku)}</td><td>${money(p.purchase_price)}</td><td>${money(p.retail_price)}</td><td><b class="${low?"negative":""}">${p.current_stock}</b></td><td>${p.minimum_stock}</td>${isOwner()?`<td><button class="danger" data-delete-product="${p.id}">Delete</button></td>`:""}</tr>`;
+}
+function filterProducts(){
+  const q=$("productSearch").value.toLowerCase().trim();
+  const rows=(window.__products||[]).filter(p=>`${p.name} ${p.sku} ${p.description||""}`.toLowerCase().includes(q)).map(productRow).join("");
+  $("productTable").innerHTML=`<tr><th>Product</th><th>SKU</th><th>Purchase</th><th>Retail</th><th>Stock</th><th>Min</th>${isOwner()?"<th>Action</th>":""}</tr>${rows||`<tr><td colspan="7" class="empty">No matching products.</td></tr>`}`;
+  if(isOwner())document.querySelectorAll("[data-delete-product]").forEach(b=>b.addEventListener("click",()=>deleteProduct(b.dataset.deleteProduct)));
+}
+async function addProduct(e){
+  e.preventDefault();
+  const payload={name:$("productName").value.trim(),brand_id:$("productBrand").value,category_id:$("productCategory").value,sku:$("productSku").value.trim(),description:$("productDescription").value.trim(),purchase_price:Number($("purchasePrice").value||0),retail_price:Number($("retailPrice").value||0),wholesale_price:Number($("wholesalePrice").value||0),current_stock:0,minimum_stock:Number($("minimumStock").value||0),is_active:true};
+  const {data,error}=await sb.from("products").insert(payload).select().single();if(error){alert(error.message);return;}
+  await writeAudit("CREATE","products",data.id,null,payload);await show("products");
+}
+async function deleteProduct(id){
+  if(!confirm("Delete this product?"))return;
+  const {error}=await sb.from("products").delete().eq("id",id);if(error){alert(error.message);return;}await show("products");
+}
+
+/* =========================
+   RETAIL SALE
+========================= */
+async function sale(){
+  const {data,error}=await sb.from("products").select("*").eq("is_active",true).gt("current_stock",0).order("name");if(error)throw error;
+  $("app").innerHTML=`<h2>Retail Sale</h2><div class="card"><form id="saleForm">
+    <div class="full"><label>Product</label><select id="saleProduct" required><option value="">Select Product</option>${(data||[]).map(p=>`<option value="${p.id}" data-price="${p.retail_price}" data-stock="${p.current_stock}">${esc(p.name)} • ${esc(p.sku)} • ${money(p.retail_price)} • Stock ${p.current_stock}</option>`).join("")}</select></div>
+    <div><label>Quantity</label><input id="saleQuantity" type="number" min="1" value="1" required></div>
+    <div><label>Unit Price</label><input id="saleUnitPrice" type="number" min="0" step="0.01" required></div>
+    <div><label>Discount</label><input id="saleDiscount" type="number" min="0" step="0.01" value="0"></div>
+    <div><label>Payment Method</label><select id="salePayment"><option>Cash</option><option>bKash</option><option>Nagad</option><option>Card</option><option>Other</option></select></div>
+    <div><label>Note</label><input id="saleNote" placeholder="Optional"></div>
+    <div class="full"><div id="salePreview" class="success">Select a product.</div></div>
+    <div><button class="primary" type="submit">Complete Sale</button></div>
+  </form></div>`;
+  $("saleProduct").addEventListener("change",saleProductChanged);
+  ["saleQuantity","saleUnitPrice","saleDiscount"].forEach(id=>$(id).addEventListener("input",updateSalePreview));
+  $("saleForm").addEventListener("submit",completeSale);
+}
+function saleProductChanged(){
+  const o=$("saleProduct").selectedOptions[0];$("saleUnitPrice").value=o?.dataset.price||"";updateSalePreview();
+}
+function updateSalePreview(){
+  const q=Number($("saleQuantity")?.value||0),p=Number($("saleUnitPrice")?.value||0),d=Number($("saleDiscount")?.value||0);
+  if($("salePreview"))$("salePreview").innerHTML=`Net Sale: <b>${money(Math.max(0,q*p-d))}</b>`;
+}
+async function completeSale(e){
+  e.preventDefault();
+  const productId=$("saleProduct").value,quantity=Number($("saleQuantity").value),unitPrice=Number($("saleUnitPrice").value),discount=Number($("saleDiscount").value||0);
+  if(!productId||quantity<=0){alert("Select a product and quantity.");return;}
+  const {data:product,error:pe}=await sb.from("products").select("*").eq("id",productId).single();if(pe){alert(pe.message);return;}
+  if(quantity>Number(product.current_stock)){alert("Not enough stock.");return;}
+  const subtotal=quantity*unitPrice,totalAmount=Math.max(0,subtotal-discount),totalCost=quantity*Number(product.purchase_price||0),grossProfit=totalAmount-totalCost,invoice="INV-"+Date.now();
+  const salePayload={invoice_no:invoice,subtotal,discount,total_amount:totalAmount,total_cost:totalCost,gross_profit:grossProfit,payment_method:$("salePayment").value,status:"completed",note:$("saleNote").value.trim(),created_by:currentUser.id};
+  const {data:saleData,error:se}=await sb.from("sales").insert(salePayload).select().single();if(se){alert(se.message);return;}
+  const itemPayload={sale_id:saleData.id,product_id:productId,quantity,unit_price:unitPrice,unit_cost:Number(product.purchase_price||0),line_total:totalAmount,line_cost:totalCost};
+  const {error:ie}=await sb.from("sale_items").insert(itemPayload);
+  if(ie){await sb.from("sales").delete().eq("id",saleData.id);alert(ie.message);return;}
+  await writeAudit("CREATE","sales",saleData.id,null,salePayload);
+  alert("Sale completed successfully.\nInvoice: "+invoice);await show("sales");
+}
+
+/* =========================
+   STOCK
+========================= */
+async function stock(){
+  const [pr,tr]=await Promise.all([
+    sb.from("products").select("*").eq("is_active",true).order("name"),
+    sb.from("inventory_transactions").select("*").order("created_at",{ascending:false}).limit(100)
+  ]);
+  if(pr.error)throw pr.error;if(tr.error)throw tr.error;
+  const ps=pr.data||[],tx=tr.data||[];
+  $("app").innerHTML=`<h2>Stock Management</h2>${isManager()?`<div class="card"><form id="stockForm">
+    <div><label>Product</label><select id="stockProduct" required><option value="">Select Product</option>${ps.map(p=>`<option value="${p.id}">${esc(p.name)} • Stock ${p.current_stock}</option>`).join("")}</select></div>
+    <div><label>Transaction Type</label><select id="stockType"><option value="STOCK_IN">Stock In</option><option value="STOCK_OUT">Stock Out</option><option value="ADJUSTMENT">Adjustment</option></select></div>
+    <div><label>Quantity</label><input id="stockQuantity" type="number" min="1" required></div>
+    <div><label>Unit Cost</label><input id="stockCost" type="number" min="0" step="0.01" value="0"></div>
+    <div><label>Note</label><input id="stockNote" placeholder="Supplier / damaged / adjustment"></div>
+    <div><button class="primary" type="submit">Save Stock</button></div>
+  </form></div>`:""}<div class="section"><h2>Current Inventory</h2><div class="tablewrap"><table><tr><th>Product</th><th>SKU</th><th>Stock</th><th>Minimum</th><th>Status</th></tr>${ps.map(p=>{const low=Number(p.current_stock)<=Number(p.minimum_stock);return `<tr><td>${esc(p.name)}</td><td>${esc(p.sku)}</td><td><b>${p.current_stock}</b></td><td>${p.minimum_stock}</td><td><span class="pill">${low?"LOW":"OK"}</span></td></tr>`}).join("")}</table></div></div>
+  <div class="section"><h2>Recent Stock Transactions</h2><div class="tablewrap"><table><tr><th>Date</th><th>Type</th><th>Product ID</th><th>Qty</th><th>Cost</th><th>Note</th></tr>${tx.map(t=>`<tr><td>${dateTime(t.created_at)}</td><td><span class="pill">${esc(t.transaction_type)}</span></td><td>${esc(t.product_id)}</td><td>${t.quantity}</td><td>${money(t.unit_cost)}</td><td>${esc(t.note||"")}</td></tr>`).join("")||`<tr><td colspan="6" class="empty">No stock transactions.</td></tr>`}</table></div></div>`;
+  if(isManager())$("stockForm").addEventListener("submit",addStock);
+}
+async function addStock(e){
+  e.preventDefault();
+  const productId=$("stockProduct").value,type=$("stockType").value,qty=Number($("stockQuantity").value),cost=Number($("stockCost").value||0);
+  const {data:product,error:pe}=await sb.from("products").select("*").eq("id",productId).single();if(pe){alert(pe.message);return;}
+  let delta=qty;
+  if(type==="STOCK_OUT"){delta=-qty;if(qty>Number(product.current_stock)){alert("Not enough stock.");return;}}
+  if(type==="ADJUSTMENT"){
+    const value=prompt("Enter the new actual stock quantity:",product.current_stock),newStock=Number(value);
+    if(value===null||!Number.isFinite(newStock)||newStock<0){alert("Invalid stock.");return;}
+    delta=newStock-Number(product.current_stock);
+  }
+  const newStock=Number(product.current_stock)+delta;if(newStock<0){alert("Stock cannot be negative.");return;}
+  const {error:ue}=await sb.from("products").update({current_stock:newStock}).eq("id",productId);if(ue){alert(ue.message);return;}
+  const {error:te}=await sb.from("inventory_transactions").insert({product_id:productId,transaction_type:type,quantity:delta,unit_cost:cost,note:$("stockNote").value.trim(),created_by:currentUser.id});
+  if(te){await sb.from("products").update({current_stock:Number(product.current_stock)}).eq("id",productId);alert(te.message);return;}
+  await writeAudit("STOCK","inventory_transactions",null,null,{product_id:productId,transaction_type:type,quantity:delta});await show("stock");
+}
+
+/* =========================
+   SALES HISTORY
+========================= */
+async function sales(){
+  const {data,error}=await sb.from("sales").select("*,sale_items(*,products(name,sku))").order("created_at",{ascending:false});if(error)throw error;
+  $("app").innerHTML=`<h2>Sales History</h2><div class="toolbar"><input id="salesSearch" placeholder="Search invoice / product / payment"><button class="primary" id="exportSales">Export CSV</button></div><div class="tablewrap"><table id="salesTable"><tr><th>Invoice</th><th>Date</th><th>Items</th><th>Total</th><th>Cost</th><th>Profit</th><th>Payment</th><th>Status</th></tr>${(data||[]).map(saleRow).join("")||`<tr><td colspan="8" class="empty">No sales yet.</td></tr>`}</table></div>`;
+  window.__sales=data||[];$("salesSearch").addEventListener("input",filterSales);$("exportSales").addEventListener("click",exportSalesCSV);
+}
+function saleRow(s){
+  const items=(s.sale_items||[]).map(i=>`${esc(i.products?.name||"Product")} × ${i.quantity}`).join("<br>");
+  return `<tr><td><b>${esc(s.invoice_no)}</b></td><td>${dateTime(s.created_at)}</td><td>${items}</td><td>${money(s.total_amount)}</td><td>${money(s.total_cost)}</td><td class="positive">${money(s.gross_profit)}</td><td>${esc(s.payment_method)}</td><td><span class="pill">${esc(s.status)}</span></td></tr>`;
+}
+function filterSales(){
+  const q=$("salesSearch").value.toLowerCase().trim(),rows=(window.__sales||[]).filter(s=>{const items=(s.sale_items||[]).map(i=>i.products?.name||"").join(" ");return `${s.invoice_no} ${s.payment_method} ${items}`.toLowerCase().includes(q)}).map(saleRow).join("");
+  $("salesTable").innerHTML=`<tr><th>Invoice</th><th>Date</th><th>Items</th><th>Total</th><th>Cost</th><th>Profit</th><th>Payment</th><th>Status</th></tr>${rows||`<tr><td colspan="8" class="empty">No matching sales.</td></tr>`}`;
+}
+function exportSalesCSV(){
+  const rows=[["Invoice","Date","Product","SKU","Quantity","Unit Price","Line Total","Payment"]];
+  (window.__sales||[]).forEach(s=>(s.sale_items||[]).forEach(i=>rows.push([s.invoice_no,String(s.created_at).slice(0,10),i.products?.name||"",i.products?.sku||"",i.quantity,i.unit_price,i.line_total,s.payment_method])));
+  const csv=rows.map(r=>r.map(x=>`"${String(x??"").replace(/"/g,'""')}"`).join(",")).join("\n"),blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download=`sales-report-${today()}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);
+}
+
+/* =========================
+   EXPENSES
+========================= */
+async function expenses(){
+  const {data,error}=await sb.from("expenses").select("*").order("expense_date",{ascending:false});if(error)throw error;
+  const total=(data||[]).reduce((a,e)=>a+Number(e.amount||0),0);
+  $("app").innerHTML=`<h2>Expenses</h2>${isOwner()?`<div class="card"><form id="expenseForm">
+    <div><label>Expense Title</label><input id="expenseTitle" required placeholder="Shop Rent"></div>
+    <div><label>Category</label><select id="expenseCategory"><option>Rent</option><option>Salary</option><option>Electricity</option><option>Delivery</option><option>Packaging</option><option>Marketing</option><option>Other</option></select></div>
+    <div><label>Amount</label><input id="expenseAmount" type="number" min="0" step="0.01" required></div>
+    <div><label>Date</label><input id="expenseDate" type="date" value="${today()}" required></div>
+    <div><label>Note</label><input id="expenseNote"></div>
+    <div><button class="primary" type="submit">Add Expense</button></div>
+  </form></div>`:""}<div class="section grid"><div class="card"><div class="muted">Total Expenses</div><div class="metric negative">${money(total)}</div></div></div>
+  <div class="section tablewrap"><table><tr><th>Date</th><th>Title</th><th>Category</th><th>Amount</th><th>Note</th>${isOwner()?"<th></th>":""}</tr>${(data||[]).map(e=>`<tr><td>${esc(e.expense_date)}</td><td>${esc(e.title)}</td><td>${esc(e.category)}</td><td>${money(e.amount)}</td><td>${esc(e.note||"")}</td>${isOwner()?`<td><button class="danger" data-delete-expense="${e.id}">Delete</button></td>`:""}</tr>`).join("")||`<tr><td colspan="6" class="empty">No expenses yet.</td></tr>`}</table></div>`;
+  if(isOwner()){$("expenseForm").addEventListener("submit",addExpense);document.querySelectorAll("[data-delete-expense]").forEach(b=>b.addEventListener("click",()=>deleteExpense(b.dataset.deleteExpense)));}
+}
+async function addExpense(e){
+  e.preventDefault();const payload={title:$("expenseTitle").value.trim(),category:$("expenseCategory").value,amount:Number($("expenseAmount").value),note:$("expenseNote").value.trim(),expense_date:$("expenseDate").value,created_by:currentUser.id};
+  const {data,error}=await sb.from("expenses").insert(payload).select().single();if(error){alert(error.message);return;}await writeAudit("CREATE","expenses",data.id,null,payload);await show("expenses");
+}
+async function deleteExpense(id){
+  if(!confirm("Delete this expense?"))return;const {error}=await sb.from("expenses").delete().eq("id",id);if(error){alert(error.message);return;}await show("expenses");
+}
+
+/* =========================
+   REPORTS
+========================= */
+async function reports(){
+  const {data,error}=await sb.from("sales").select("*").order("created_at",{ascending:false});if(error)throw error;
+  const s=data||[],salesTotal=s.reduce((a,x)=>a+Number(x.total_amount||0),0),cost=s.reduce((a,x)=>a+Number(x.total_cost||0),0),profit=s.reduce((a,x)=>a+Number(x.gross_profit||0),0);
+  $("app").innerHTML=`<h2>Reports</h2><div class="grid"><div class="card"><div class="muted">Total Sales</div><div class="metric">${money(salesTotal)}</div></div><div class="card"><div class="muted">Total Cost</div><div class="metric">${money(cost)}</div></div><div class="card"><div class="muted">Gross Profit</div><div class="metric positive">${money(profit)}</div></div><div class="card"><div class="muted">Orders</div><div class="metric">${s.length}</div></div></div><div class="section"><h2>Category Sales</h2><div class="tablewrap"><table id="categoryReport"><tr><th>Category</th><th>Units</th><th>Sales</th><th>Cost</th><th>Profit</th></tr><tr><td colspan="5" class="empty">Loading...</td></tr></table></div></div>`;
+  const cr=await sb.from("category_sales_summary").select("*").order("gross_profit",{ascending:false});if(cr.error){$("categoryReport").innerHTML=`<tr><td colspan="5" class="empty">Category report unavailable.</td></tr>`;return;}
+  $("categoryReport").innerHTML=`<tr><th>Category</th><th>Units</th><th>Sales</th><th>Cost</th><th>Profit</th></tr>${(cr.data||[]).map(c=>`<tr><td>${esc(c.category_name)}</td><td>${c.units_sold}</td><td>${money(c.total_sales)}</td><td>${money(c.total_cost)}</td><td class="positive">${money(c.gross_profit)}</td></tr>`).join("")||`<tr><td colspan="5" class="empty">No category sales data.</td></tr>`}`;
+}
+
+/* =========================
+   AUDIT
+========================= */
+async function audit(){
+  if(!isOwner()){$("app").innerHTML=`<div class="error">Only the owner can view audit logs.</div>`;return;}
+  const {data,error}=await sb.from("audit_logs").select("*").order("created_at",{ascending:false}).limit(200);if(error)throw error;
+  $("app").innerHTML=`<h2>Audit Log</h2><div class="tablewrap"><table><tr><th>Date</th><th>User</th><th>Action</th><th>Table</th><th>Record</th></tr>${(data||[]).map(a=>`<tr><td>${dateTime(a.created_at)}</td><td>${esc(a.user_id)}</td><td>${esc(a.action)}</td><td>${esc(a.table_name)}</td><td>${esc(a.record_id||"—")}</td></tr>`).join("")||`<tr><td colspan="5" class="empty">No audit records.</td></tr>`}</table></div>`;
+}
+async function writeAudit(action,tableName,recordId,oldData,newData){
+  try{
+    const {error}=await sb.from("audit_logs").insert({user_id:currentUser.id,action,table_name:tableName,record_id:recordId||null,old_data:oldData,new_data:newData});
+    if(error)console.error("Audit error:",error);
+  }catch(e){console.error("Audit error:",e);}
+}
+
+/* =========================
+   AUTH LISTENER / START
+========================= */
+sb.auth.onAuthStateChange((event,session)=>{
+  if(event==="SIGNED_OUT"){currentUser=null;currentProfile=null;renderLogin();}
+});
+window.addEventListener("DOMContentLoaded",init);
+</script>
+</body>
+</html>
