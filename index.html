@@ -858,50 +858,64 @@ async function addBrand(e){
 
   e.preventDefault();
 
-  const name = brandName.value.trim();
-  const description = brandDescription.value.trim();
+  try {
 
-  const {error} = await sb
-    .from("brands")
-    .insert({
-      name,
-      description,
-      is_active:true
-    });
+    const name = document
+      .getElementById("brandName")
+      .value
+      .trim();
 
-  if(error){
-    alert(error.message);
-    return;
+    const description = document
+      .getElementById("brandDescription")
+      .value
+      .trim();
+
+    if(!name){
+      alert("Brand name is required.");
+      return;
+    }
+
+    const {data,error} = await sb
+      .from("brands")
+      .insert({
+        name: name,
+        description: description,
+        is_active: true
+      })
+      .select()
+      .single();
+
+    if(error){
+      console.error(error);
+      alert("Brand Add Failed: " + error.message);
+      return;
+    }
+
+    await writeAudit(
+      "CREATE",
+      "brands",
+      data.id,
+      null,
+      {
+        name: name,
+        description: description
+      }
+    );
+
+    alert("Brand added successfully!");
+
+    await show("brands");
+
+  } catch(error) {
+
+    console.error(error);
+
+    alert(
+      "Something went wrong: " +
+      (error.message || error)
+    );
   }
-
-  await writeAudit(
-    "CREATE",
-    "brands",
-    null,
-    null,
-    {name,description}
-  );
-
-  await show("brands");
 }
-
-async function deleteBrand(id){
-
-  if(!confirm("Delete this brand?")) return;
-
-  const {error} = await sb
-    .from("brands")
-    .delete()
-    .eq("id",id);
-
-  if(error){
-    alert(error.message);
-    return;
-  }
-
-  await show("brands");
-}
-
 /* =========================================================
    CATEGORIES
 ========================================================= */
@@ -1009,50 +1023,64 @@ async function addCategory(e){
 
   e.preventDefault();
 
-  const name = categoryName.value.trim();
-  const description = categoryDescription.value.trim();
+  try {
 
-  const {error} = await sb
-    .from("categories")
-    .insert({
-      name,
-      description,
-      is_active:true
-    });
+    const name = document
+      .getElementById("categoryName")
+      .value
+      .trim();
 
-  if(error){
-    alert(error.message);
-    return;
+    const description = document
+      .getElementById("categoryDescription")
+      .value
+      .trim();
+
+    if(!name){
+      alert("Category name is required.");
+      return;
+    }
+
+    const {data,error} = await sb
+      .from("categories")
+      .insert({
+        name: name,
+        description: description,
+        is_active: true
+      })
+      .select()
+      .single();
+
+    if(error){
+      console.error(error);
+      alert("Category Add Failed: " + error.message);
+      return;
+    }
+
+    await writeAudit(
+      "CREATE",
+      "categories",
+      data.id,
+      null,
+      {
+        name: name,
+        description: description
+      }
+    );
+
+    alert("Category added successfully!");
+
+    await show("categories");
+
+  } catch(error) {
+
+    console.error(error);
+
+    alert(
+      "Something went wrong: " +
+      (error.message || error)
+    );
   }
-
-  await writeAudit(
-    "CREATE",
-    "categories",
-    null,
-    null,
-    {name,description}
-  );
-
-  await show("categories");
 }
-
-async function deleteCategory(id){
-
-  if(!confirm("Delete this category?")) return;
-
-  const {error} = await sb
-    .from("categories")
-    .delete()
-    .eq("id",id);
-
-  if(error){
-    alert(error.message);
-    return;
-  }
-
-  await show("categories");
-}
-
 /* =========================================================
    PRODUCTS
 ========================================================= */
