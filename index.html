@@ -1325,59 +1325,84 @@ async function addProduct(e){
 
   e.preventDefault();
 
-  const payload = {
-    name:productName.value.trim(),
-    brand_id:productBrand.value,
-    category_id:productCategory.value,
-    sku:productSku.value.trim(),
-    description:productDescription.value.trim(),
-    purchase_price:Number(purchasePrice.value||0),
-    retail_price:Number(retailPrice.value||0),
-    wholesale_price:Number(wholesalePrice.value||0),
-    current_stock:0,
-    minimum_stock:Number(minimumStock.value||0),
-    is_active:true
-  };
+  try{
 
-  const {data,error} = await sb
-    .from("products")
-    .insert(payload)
-    .select()
-    .single();
+    const payload = {
+      name: document.getElementById("productName").value.trim(),
+      brand_id: document.getElementById("productBrand").value,
+      category_id: document.getElementById("productCategory").value,
+      sku: document.getElementById("productSku").value.trim(),
+      description: document.getElementById("productDescription").value.trim(),
+      purchase_price: Number(
+        document.getElementById("purchasePrice").value || 0
+      ),
+      retail_price: Number(
+        document.getElementById("retailPrice").value || 0
+      ),
+      wholesale_price: Number(
+        document.getElementById("wholesalePrice").value || 0
+      ),
+      current_stock: 0,
+      minimum_stock: Number(
+        document.getElementById("minimumStock").value || 0
+      ),
+      is_active: true
+    };
 
-  if(error){
-    alert(error.message);
-    return;
+    if(!payload.name){
+      alert("Product name is required.");
+      return;
+    }
+
+    if(!payload.brand_id){
+      alert("Please select a brand.");
+      return;
+    }
+
+    if(!payload.category_id){
+      alert("Please select a category.");
+      return;
+    }
+
+    if(!payload.sku){
+      alert("SKU is required.");
+      return;
+    }
+
+    const {data,error} = await sb
+      .from("products")
+      .insert(payload)
+      .select()
+      .single();
+
+    if(error){
+      console.error("PRODUCT INSERT ERROR:", error);
+      alert("Product Add Failed: " + error.message);
+      return;
+    }
+
+    await writeAudit(
+      "CREATE",
+      "products",
+      data.id,
+      null,
+      payload
+    );
+
+    alert("Product added successfully!");
+
+    await show("products");
+
+  }catch(error){
+
+    console.error("ADD PRODUCT ERROR:", error);
+
+    alert(
+      "Something went wrong: " +
+      (error.message || error)
+    );
   }
-
-  await writeAudit(
-    "CREATE",
-    "products",
-    data.id,
-    null,
-    payload
-  );
-
-  await show("products");
 }
-
-async function deleteProduct(id){
-
-  if(!confirm("Delete this product?")) return;
-
-  const {error} = await sb
-    .from("products")
-    .delete()
-    .eq("id",id);
-
-  if(error){
-    alert(error.message);
-    return;
-  }
-
-  await show("products");
-}
-
 /* =========================================================
    RETAIL SALE
 ========================================================= */
